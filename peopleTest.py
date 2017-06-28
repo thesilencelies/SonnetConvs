@@ -6,12 +6,13 @@ import numpy as np
 import tensorflow as tf
 import sonnet as snt
 import argparse
+import sys
 
 import InceptionModule
 import CrossInputNeighborhoodDifferences as CIND
 import MultiScale as ms
 
-import PeopleCompare as pcs
+import PeopleCompare as pc
 
 #actual training
 def reshapeMod1(inp):
@@ -32,12 +33,14 @@ def variable_summaries(var):
 
 def main(_):
    # Import data
-   people = pc.read_data_sets()
+   people = pc.read_data_sets('npImages.npy','npLabels.npy')
 
-   imgsize = 784*2
+   imgsize = 420*570
 
    # Create the model
-   x = tf.placeholder(tf.float32, [None, imgsize])
+   x1 = tf.placeholder(tf.float32, [None, imgsize])
+   x2 = tf.placeholder(tf.float32, [None, imgsize])
+
 
    # Define loss and optimizer
    y_ = tf.placeholder(tf.float32, [None,2])
@@ -78,6 +81,9 @@ def main(_):
                                     epsilon=1.0).minimize(cross_entropy)
 
 
+   
+
+
    #variable_summaries(y_res)
    saver = tf.train.Saver()
 
@@ -90,26 +96,41 @@ def main(_):
        test_writer = tf.summary.FileWriter('/tmp/tensorflow' + '/test')
        #training
        sess.run(tf.global_variables_initializer())
-       for i in range(20000):
-         batch = people.train.next_batch(50)
-         if i % 100 == 0:
-           train_accuracy = accuracy.eval(feed_dict={
-               x: batch[0], y_: batch[1], keep_prob: 1.0})
-           print('step %d, training accuracy %g' % (i, train_accuracy))
-         train_step.run(feed_dict={x: batch[0], y_: batch[1], keep_prob: 0.5})
-         if i % 1000 == 999:
-           saver.save(sess,'peopleModel', global_step=i)
-       accuracies = []
-       for _ in range(people.test.num_examples):
-         test_batch = people.test.next_batch(500)
-         accuracies.append(accuracy.eval(feed_dict={
-               x: test_batch[0], y_: test_batch[1], keep_prob: 1.0}))
-       print('test accuracy %g' % sum(accuracies)/len(accuracies))
+       #thread management
+       coord = tf.train.Coordinator()
+       threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+
+       try:
+         while not coord.should_stop():
+           #the actual training loop
+           batch = people.train.next_batch(50)
+           if i % 100 == 0:
+             train_accuracy = accuracy.eval(feed_dict={
+                 x: batch[0], y_: batch[1], keep_prob: 1.0})
+             print('step %d, training accuracy %g' % (i, train_accuracy))
+           train_step.run(feed_dict={x: batch[0], y_: batch[1], keep_prob: 0.5})
+           if i % 1000 == 999:
+             saver.save(sess,'peopleModel', global_step=i)
+      
+         accuracies = []
+         for _ in range(people.test.num_examples):
+           test_batch = people.test.next_batch(500)
+           accuracies.append(accuracy.eval(feed_dict={
+                 x: test_batch[0], y_: test_batch[1], keep_prob: 1.0}))
+         print('test accuracy %g' % sum(accuracies)/len(accuracies))
+        except tf.errors.OutOfRangeError:
+            print('Done training -- epoch limit reached')
+        finally:
+            # When done, ask the threads to stop.
+            coord.request_stop()
+
+        # Wait for threads to finish.
+        coord.join(threads)
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument('--data_dir', type=str,
-                      default='/tmp/tensorflow/mnist/input_data',
+                      default='.',
                       help='Directory for storing input data')
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
