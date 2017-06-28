@@ -1,4 +1,4 @@
-#simple test of using the mnist dataset with tensorflow
+#using the people comparing system instead
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -6,17 +6,12 @@ import numpy as np
 import tensorflow as tf
 import sonnet as snt
 import argparse
-import sys
 
 import InceptionModule
 import CrossInputNeighborhoodDifferences as CIND
-
 import MultiScale as ms
-import mnistCompare as mnComp
 
-#mnist loading from the tensorflow learning lab
-from tensorflow.examples.tutorials.mnist import input_data
-
+import PeopleCompare as pcs
 
 #actual training
 def reshapeMod1(inp):
@@ -37,7 +32,7 @@ def variable_summaries(var):
 
 def main(_):
    # Import data
-   mnist = mnComp.read_data_sets(FLAGS.data_dir)
+   people = pc.read_data_sets()
 
    imgsize = 784*2
 
@@ -68,6 +63,7 @@ def main(_):
    lino = snt.Linear(2, name="linear")
    both_net = snt.Sequential([CIND.CrossInputNeighborhoodDifferences(),conv5,tf.nn.relu, tf.contrib.layers.flatten, linh, tf.nn.relu, lino], name="combined") 
 
+
    y_res = both_net( (perinput_net(reshapeMod1(split[0])), perinput_net(reshapeMod1(split[1]))) )
 
    cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y_res))
@@ -81,11 +77,12 @@ def main(_):
                                     momentum=0.9,
                                     epsilon=1.0).minimize(cross_entropy)
 
-   #to prevent gpu memory consumption bug
-   config = tf.ConfigProto()
-   config.gpu_options.allow_growth = True
+
+   #variable_summaries(y_res)
+   saver = tf.train.Saver()
+
    #training
-   with tf.Session(config = config) as sess:
+   with tf.Session() as sess:
        #summary sutff
        merged = tf.summary.merge_all()
        train_writer = tf.summary.FileWriter('/tmp/tensorflow' + '/train',
@@ -94,15 +91,17 @@ def main(_):
        #training
        sess.run(tf.global_variables_initializer())
        for i in range(20000):
-         batch = mnist.train.next_batch(50)
+         batch = people.train.next_batch(50)
          if i % 100 == 0:
            train_accuracy = accuracy.eval(feed_dict={
                x: batch[0], y_: batch[1], keep_prob: 1.0})
            print('step %d, training accuracy %g' % (i, train_accuracy))
          train_step.run(feed_dict={x: batch[0], y_: batch[1], keep_prob: 0.5})
+         if i % 1000 == 999:
+           saver.save(sess,'peopleModel', global_step=i)
        accuracies = []
-       for _ in range(mnist.test.num_examples):
-         test_batch = mnist.test.next_batch(500)
+       for _ in range(people.test.num_examples):
+         test_batch = people.test.next_batch(500)
          accuracies.append(accuracy.eval(feed_dict={
                x: test_batch[0], y_: test_batch[1], keep_prob: 1.0}))
        print('test accuracy %g' % sum(accuracies)/len(accuracies))
