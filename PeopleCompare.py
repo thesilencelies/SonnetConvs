@@ -5,7 +5,7 @@ import random
 import tensorflow as tf
 
 
-def read_pair(filename_queue):
+def read_pair(filename_queue, width = 200, height = 290):
   reader = tf.TFRecordReader()
   # One can read a single serialized example from a filename
   # serialized_example is a Tensor of type string.
@@ -18,21 +18,23 @@ def read_pair(filename_queue):
           # We know the length of both fields. If not the
           # tf.VarLenFeature could be used
           'label': tf.FixedLenFeature([2], tf.int64),
-          'image': tf.VarLenFeature( tf.float),
+          'image_1': tf.FixedLenFeature([1,height,width,1], tf.float32),
+          'image_2': tf.FixedLenFeature([1,height,width,1], tf.float32),
           'rows' : tf.FixedLenFeature([], tf.int64),
           'cols' : tf.FixedLenFeature([], tf.int64)
       })
   label = features['label']
   image_1 = features['image_1']
   image_2 = features['image_2']
+  return image_1, image_2, label
 
 
 #from the top, let's make it a FIFO queue loading files from a folder
 
-def input_pipeline(filenames, batch_size, read_threads, num_epochs=None):
+def input_pipeline(filenames, batch_size, read_threads, num_epochs=None, imgwidth = 200, imgheight = 290):
   filename_queue = tf.train.string_input_producer(
       filenames, num_epochs=num_epochs, shuffle=True)
-  example_list = [read_pair(filename_queue)
+  example_list = [read_pair(filename_queue, imgwidth, imgheight)
                   for _ in range(read_threads)]
   min_after_dequeue = 10000
   capacity = min_after_dequeue + 3 * batch_size

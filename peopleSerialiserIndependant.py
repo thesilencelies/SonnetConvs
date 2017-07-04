@@ -136,7 +136,9 @@ if __name__ == "__main__":
   with tf.python_io.TFRecordWriter(args.paired_output_train) as writer:
 
     makeAndSavePair(args.ntrain_pairs, args.positive_ratio, usedLabels, args.train_ratio, int(args.image_width), int(args.image_height))
+    writer.close()
      
 
   with tf.python_io.TFRecordWriter(args.paired_output_test) as writer:
     makeAndSavePair(args.ntest_pairs, args.positive_ratio, usedLabels, 1, int(args.image_width), int(args.image_height))
+    writer.close()
