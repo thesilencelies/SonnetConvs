@@ -2,167 +2,107 @@
 """
 tests the people comparison model
 """
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-import numpy as np
 import tensorflow as tf
-import sonnet as snt
+import peopleModel as pm
+
 import argparse
-import sys
 
-import InceptionModule
-import CrossInputNeighborhoodDifferences as CIND
-import MultiScale as ms
+def eval_once(saver, summary_writer, correct_prediction, summary_op, args):
+  """Run Eval once.
+  Args:
+    saver: Saver.
+    summary_writer: Summary writer.
+    correct_prediction: correct_prediction op.
+    summary_op: Summary op.
+  """
+  with tf.Session() as sess:
+    ckpt = tf.train.get_checkpoint_state(args.checkpoint_dir)
+    if ckpt and ckpt.model_checkpoint_path:
+      # Restores from checkpoint
+      saver.restore(sess, ckpt.model_checkpoint_path)
+      # Assuming model_checkpoint_path looks something like:
+      #   /my-favorite-path/cifar10_train/model.ckpt-0,
+      # extract global_step from it.
+      global_step = ckpt.model_checkpoint_path.split('/')[-1].split('-')[-1]
+    else:
+      print('No checkpoint file found')
+      return
 
-import PeopleCompare as pc
+    # Start the queue runners.
+    coord = tf.train.Coordinator()
+    try:
+      threads = []
+      for qr in tf.get_collection(tf.GraphKeys.QUEUE_RUNNERS):
+        threads.extend(qr.create_threads(sess, coord=coord, daemon=True,
+                                         start=True))
 
-#scales and reshapes
-def reshapeMod1(inp):
-   return tf.reshape(tf.mul(inp,1./0xffff),[-1,420,300,1])
+      num_iter = int(math.ceil(args.num_examples / args.batch_size))
+      true_count = 0  # Counts the number of correct predictions.
+      total_sample_count = num_iter * args.batch_size
+      step = 0
+      while step < num_iter and not coord.should_stop():
+        predictions = sess.run([correct_prediction])
+        true_count += np.sum(predictions)
+        step += 1
 
-def variable_summaries(var):
-  """Attach a lot of summaries to a Tensor (for TensorBoard visualization)."""
-  with tf.name_scope('summaries'):
-    mean = tf.reduce_mean(var)
-    tf.summary.scalar('mean', mean)
-    with tf.name_scope('stddev'):
-      stddev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)))
-    tf.summary.scalar('stddev', stddev)
-    tf.summary.scalar('max', tf.reduce_max(var))
-    tf.summary.scalar('min', tf.reduce_min(var))
-    tf.summary.histogram('histogram', var)
+      # Compute precision @ 1.
+      precision = true_count / total_sample_count
+      print('%s: precision @ 1 = %.3f' % (datetime.now(), precision))
+
+      summary = tf.Summary()
+      summary.ParseFromString(sess.run(summary_op))
+      summary.value.add(tag='Precision @ 1', simple_value=precision)
+      summary_writer.add_summary(summary, global_step)
+    except Exception as e:  # pylint: disable=broad-except
+      coord.request_stop(e)
+
+    coord.request_stop()
+    coord.join(threads, stop_grace_period_secs=10)
+
+
+def evaluate(args):
+  """Eval people comparison for a number of steps."""
+  with tf.Graph().as_default() as g:
+    # Get images and labels for CIFAR-10.
+
+    image1, image2, labels = pm.inputs(args.test_data, args.batch_size, args.n_read_threads, args.num_epochs)
+
+    # Build a Graph that computes the logits predictions from the
+    # inference model.
+    logits = pm.model(image1, image2)
+
+    # Calculate predictions.
+    correct_prediction = tf.equal(tf.argmax(labels, 1), tf.argmax(logits, 1))
+
+    # Restore the moving average version of the learned variables for eval.
+
+    saver = tf.train.Saver()
+
+    # Build the summary operation based on the TF collection of Summaries.
+    summary_op = tf.summary.merge_all()
+
+    summary_writer = tf.summary.FileWriter(args.eval_dir, g)
+
+    while True:
+      eval_once(saver, summary_writer, correct_prediction, summary_op, args)
+      time.sleep(1)
+
 
 
 def main(_):
   parser = argparse.ArgumentParser()
-  parser.add_argument("train_data")
   parser.add_argument("test_data")
-  parser.add_argument("batch_size", type=int, default=50)
+  parser.add_argument("checkpoint_dir")
+  parser.add_argument("--batch_size", type=int, default=50)
   parser.add_argument("--n_read_threads", type=int, default = 3)
   parser.add_argument("--num_epochs", type=int, default=None)
+  parser.add_argument("--num_examples", type=int, default = 5000)
+  parser.add_argument("--eval_dir", default = ".")
   args = parser.parse_args()
-
-  # Import data
-  filenames = [args.train_data]
-  # Create the model
-  x1, x2, y_ = pc.input_pipeline(filenames, args.batch_size, args.--n_read_threads, num_epochs=args.--num_epochs)
-
-  keep_prob = tf.placeholder(tf.float32)
-
-  kernel_shape = 3
-  batch_norm = snt.BatchNorm()
-  #per-input convolutions then max pooling
-  conv = snt.Conv2D(output_channels=5,kernel_shape=kernel_shape,
-                      stride=1,name="conv1")
-  conv2 = snt.Conv2D(output_channels=5,kernel_shape=kernel_shape,
-                      stride=1,name="conv2")
-  conv3 = snt.Conv2D(output_channels=5,kernel_shape=kernel_shape,
-                      stride=1,name="conv2")
-  conv5 = snt.Conv2D(output_channels=3,kernel_shape=5,
-                      stride=1,name="summaryFeatures")
-  maxpool = lambda x : tf.nn.max_pool(x, ksize=[1, 2, 2, 1],
-                      strides=[1, 2, 2, 1], padding='SAME')
-  perinput_net = ms.MultiScaleModule([conv,tf.nn.relu, conv2,maxpool,conv3,maxpool], 3, name="per_input")
-  #cross input then two  linear layers
-  linh = snt.Linear(1000, name="hidden")
-  lino = snt.Linear(2, name="linear")
-  both_net = snt.Sequential([CIND.CrossInputNeighborhoodDifferences(),conv5,tf.nn.relu, tf.contrib.layers.flatten, linh, tf.nn.relu, lino], name="combined") 
-
-
-  y_res = both_net( (perinput_net(batch_norm(reshapeMod1(x1))), perinput_net(batch_norm(reshapeMod1(x2)))) )
-
-  cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y_res))
-  train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
-
-  correct_prediction = tf.equal(tf.argmax(y_res, 1), tf.argmax(y_, 1))
-  accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-
-  reglosses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
-
-  train_step = tf.train.RMSPropOptimizer(1e-4, 0.9,
-                                  momentum=0.9,
-                                  epsilon=1.0).minimize(cross_entropy)
-
-  #variable_summaries(y_res)
-  saver = tf.train.Saver()
-
-
-  with tf.Session() as sess:
-    #summary sutff
-    merged = tf.summary.merge_all()
-    train_writer = tf.summary.FileWriter('/tmp/tensorflow' + '/train',
-                                             sess.graph)
-    sess.run(tf.global_variables_initializer())
-
-
-    # Start input enqueue threads.
-    coord = tf.train.Coordinator()
-    threads = tf.train.start_queue_runners(sess=sess, coord=coord)
-
-    try:
-        i = 0
-        while not coord.should_stop():
-            # Run training steps
-            #talk to us about what's happening
-            test_accuracy = accuracy.eval(feed_dict={keep_prob: 1.0})
-            print('step %d, test accuracy %g' % (i, train_accuracy))
-    except tf.errors.OutOfRangeError:
-        print('Done testing -- epoch limit reached')
-    finally:
-        # When done, ask the threads to stop.
-        coord.request_stop()
-
-    # Wait for threads to finish.
-    coord.join(threads)
-    saver.save(sess,'FinalPeopleModel', global_step=i)
-
-  #now we evaluate
-    # Import data
-  filenames = args.test_data
-  # Create the model
-  x1, x2, y_ = pc.input_pipeline(filenames, args.batch_size, args.--n_read_threads, num_epochs=args.--num_epochs)
-  y_res = both_net( (perinput_net(batch_norm(reshapeMod1(x1))), perinput_net(batch_norm(reshapeMod1(x2)))) )
-  correct_prediction = tf.equal(tf.argmax(y_res, 1), tf.argmax(y_, 1))
-  accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-
-  with tf.Session() as sess:
-    #summary sutff
-    merged = tf.summary.merge_all()
-    test_writer = tf.summary.FileWriter('/tmp/tensorflow' + '/test')
-    sess.run(tf.global_variables_initializer())
-
-
-    # Start input enqueue threads.
-    coord = tf.train.Coordinator()
-    threads = tf.train.start_queue_runners(sess=sess, coord=coord)
-
-    try:
-        i = 0
-        while not coord.should_stop():
-            # Run training steps
-            sess.run(accuracy, feed_dict = {keep_prob: 0.5})
-            train_accuracy = accuracy.eval(feed_dict={keep_prob: 1.0})
-            if i % 1000 == 999:
-              saver.save(sess,'peopleModel', global_step=i)
-    except tf.errors.OutOfRangeError:
-        print('Done testing -- epoch limit reached')
-    finally:
-        # When done, ask the threads to stop.
-        coord.request_stop()
-
-    # Wait for threads to finish.
-    coord.join(threads)
-  
+  evaluate(args)
 
 
 
 if __name__ == '__main__':
-  parser = argparse.ArgumentParser()
-  parser.add_argument('--data_dir', type=str,
-                      default='.',
-                      help='Directory for storing input data')
-  FLAGS, unparsed = parser.parse_known_args()
-  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  tf.app.run()
 
