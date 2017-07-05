@@ -102,14 +102,12 @@ def loss(logits, labels):
     Loss tensor of type float.
   """
   # Calculate the average cross entropy loss across the batch.
-  labels = tf.cast(labels, tf.int64)
   cross_entropy = tf.nn.softmax_cross_entropy_with_logits(labels=labels, logits=logits)
   cross_entropy_mean = tf.reduce_mean(cross_entropy, name='cross_entropy')
   tf.add_to_collection('losses', cross_entropy_mean)
 
-  # The total loss is defined as the cross entropy loss plus all of the weight
-  # decay terms (L2 loss).
-  return tf.add_n(tf.get_collection('losses'), name='total_loss')
+
+  return cross_entropy_mean
 
 
 def _add_loss_summaries(total_loss):
@@ -162,36 +160,30 @@ def train(total_loss, global_step, batch_size, nex_per_epoch):
   tf.summary.scalar('learning_rate', lr)
 
   # Generate moving averages of all losses and associated summaries.
-  loss_averages_op = _add_loss_summaries(total_loss)
+  #loss_averages_op = _add_loss_summaries(total_loss)
 
   # Compute gradients.
-  with tf.control_dependencies([loss_averages_op]):
-    opt = tf.train.RMSPropOptimizer(lr, 0.9,
+  # with tf.control_dependencies([loss_averages_op]):
+  opt = tf.train.RMSPropOptimizer(lr, 0.9,
                                   momentum=0.9,
                                   epsilon=1.0)
-    grads = opt.compute_gradients(total_loss)
 
   # Apply gradients.
-  apply_gradient_op = opt.apply_gradients(grads, global_step=global_step)
+  apply_gradient_op = opt.minimize(total_loss)
 
   # Add histograms for trainable variables.
   for var in tf.trainable_variables():
     tf.summary.histogram(var.op.name, var)
 
-  # Add histograms for gradients.
-  for grad, var in grads:
-    if grad is not None:
-      tf.summary.histogram(var.op.name + '/gradients', grad)
-
   # Track the moving averages of all trainable variables.
-  variable_averages = tf.train.ExponentialMovingAverage(
-      MOVING_AVERAGE_DECAY, global_step)
-  variables_averages_op = variable_averages.apply(tf.trainable_variables())
+  #variable_averages = tf.train.ExponentialMovingAverage(
+  #    MOVING_AVERAGE_DECAY, global_step)
+  #variables_averages_op = variable_averages.apply(tf.trainable_variables())
 
-  with tf.control_dependencies([apply_gradient_op, variables_averages_op]):
-    train_op = tf.no_op(name='train')
+ # with tf.control_dependencies([apply_gradient_op, variables_averages_op]):
+ #   train_op = tf.no_op(name='train')
 
-  return train_op
+  return apply_gradient_op
 
 
 
@@ -221,12 +213,13 @@ def main(_):
   conv2 = snt.Conv2D(output_channels=5,kernel_shape=kernel_shape,
                       stride=1,name="conv2")
   conv3 = snt.Conv2D(output_channels=5,kernel_shape=kernel_shape,
-                      stride=1,name="conv2")
+                      stride=1,name="conv3")
   conv5 = snt.Conv2D(output_channels=3,kernel_shape=5,
                       stride=1,name="summaryFeatures")
+  conv1 = snt.Conv2D(output_channels=1, kernel_shape=1,stride=1,name="1dconv")
   maxpool = lambda x : tf.nn.max_pool(x, ksize=[1, 2, 2, 1],
                       strides=[1, 2, 2, 1], padding='SAME')
-  perinput_net = ms.MultiScaleModule([conv,tf.nn.relu, conv2,maxpool,conv3,maxpool], 3, name="per_input")
+  perinput_net = snt.Sequential([ms.MultiScaleModule([conv,tf.nn.relu, conv2,maxpool], 3, name="per_input"),tf.nn.relu,conv1, conv3,maxpool])
   #cross input then two  linear layers
   linh = snt.Linear(1000, name="hidden")
   lino = snt.Linear(2, name="linear")

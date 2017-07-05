@@ -4,7 +4,9 @@ tests the people comparison model
 """
 import tensorflow as tf
 import peopleModel as pm
-
+import time
+import math
+import numpy as np
 import argparse
 
 def eval_once(saver, summary_writer, correct_prediction, summary_op, args):
@@ -46,8 +48,8 @@ def eval_once(saver, summary_writer, correct_prediction, summary_op, args):
         step += 1
 
       # Compute precision @ 1.
-      precision = true_count / total_sample_count
-      print('%s: precision @ 1 = %.3f' % (datetime.now(), precision))
+      precision = float(true_count) / total_sample_count
+      print('precision @ 1 = %.3f' % ( precision))
 
       summary = tf.Summary()
       summary.ParseFromString(sess.run(summary_op))
