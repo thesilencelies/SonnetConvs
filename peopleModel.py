@@ -219,7 +219,7 @@ def main(_):
   conv1 = snt.Conv2D(output_channels=1, kernel_shape=1,stride=1,name="1dconv")
   maxpool = lambda x : tf.nn.max_pool(x, ksize=[1, 2, 2, 1],
                       strides=[1, 2, 2, 1], padding='SAME')
-  perinput_net = snt.Sequential([ms.MultiScaleModule([conv,tf.nn.relu, conv2,maxpool], 3, name="per_input"),tf.nn.relu,conv1, conv3,maxpool])
+  perinput_net = snt.Sequential([ms.MultiScaleModule([conv,tf.nn.relu, conv2,maxpool], 3, name="per_input"),tf.nn.relu,conv1])
   #cross input then two  linear layers
   linh = snt.Linear(1000, name="hidden")
   lino = snt.Linear(2, name="linear")

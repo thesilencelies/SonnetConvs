@@ -44,17 +44,16 @@ def main(_):
     threads = tf.train.start_queue_runners(sess=sess, coord=coord)
 
     try:
-        i = 0
         while not coord.should_stop():
             # Run training steps
             sess.run(train_op)
-            if i % 1000 == 999:
+            if (tf.train.global_step(sess, global_step) % 1000) == 999:
               saver.save(sess,args.save_dir, global_step=global_step)
             #talk to us about what's happening
-            if i% 100 == 99:
+            if (tf.train.global_step(sess, global_step) % 100) == 99:
               train_accuracy = accuracy.eval()
-              print('step %d, train accuracy %g' % (i, train_accuracy))
-            i += 1
+              print('step %d, train accuracy %g' % (tf.train.global_step(sess, global_step), train_accuracy))
+            global_step += 1
     except tf.errors.OutOfRangeError:
         print('Done testing -- epoch limit reached')
     finally:
