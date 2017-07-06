@@ -2,7 +2,6 @@
 
 import numpy as np
 import random
-import scipy.ndimage
 import tensorflow as tf
 
 
@@ -44,25 +43,27 @@ def input_pipeline(filenames, batch_size, read_threads, num_epochs=None, imgwidt
       min_after_dequeue=min_after_dequeue)
   return example1_batch, example2_batch, label_batch
 
-def _distort(img):
-  if random.random() < 0.5:
-    img = np.flip(img,2)
+def _distort(img, imgwidth, imgheight):
+  #randomly flip it
+  tf.image.random_flip_left_right(img)
   #randomly scale it
   if random.random() < 0.5:
-    zeros = np.zeros(img.shape,img1.dtype)
-    
-    zeros[0][img.shape[1]/4:img.shape[1]/4+img.shape[1]/2][img.shape[2]/4:img.shape[2]/2+img.shape[2]/4] = scipy.ndimage.zoom(img, 2, order=1)
-    img = zeros
+    img = tf.image.resize_bilinear(
+        img,[imgwidth/2, imgheight/2])
+    img = tf.image.pad_to_bounding_box(img,imgheight/2, imgwidth/2, imgheight, imgwidth)
   #randomly add noise
   if random.random() < 0.5:
-    img = img + np.random.normal(0,0x2000,img.shape)
-
+    img = img + tf.random_normal(shape = img.shape, mean = 0.0, stddev = 0x2000, dtype = tf.float32)
   return img
+
+def _distort_tuple(img_tpl, height, width):
+  return _distort(img_tpl[0]), _distort(img_tpl[1]), img_tpl[2]
+
 
 def distorted_input_pipeline(filenames, batch_size, read_threads, num_epochs=None, imgwidth = 200, imgheight = 290):
   filename_queue = tf.train.string_input_producer(
       filenames, num_epochs=num_epochs, shuffle=True)
-  example_list = [read_pair(filename_queue, imgwidth, imgheight)
+  example_list = [_distort_tuple(read_pair(filename_queue, imgwidth, imgheight), imgwidth, imgheight)
                   for _ in range(read_threads)]
   min_after_dequeue = 10000
   capacity = min_after_dequeue + 3 * batch_size

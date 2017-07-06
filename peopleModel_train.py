@@ -24,7 +24,7 @@ def main(_):
   
   loss = pm.loss(logits, label)
 
-  train_op = pm.train(loss, global_step, args.batch_size, 5000)
+  train_op = pm.train(loss, global_step, args.batch_size, 1000)
 
   correct_prediction = tf.equal(tf.argmax(label, 1), tf.argmax(logits, 1))
   accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
