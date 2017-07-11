@@ -32,6 +32,7 @@ def eval_once(saver, summary_writer, correct_prediction, summary_op, args):
 
     # Start the queue runners.
     coord = tf.train.Coordinator()
+    sess.graph.finalize()
     try:
       threads = []
       for qr in tf.get_collection(tf.GraphKeys.QUEUE_RUNNERS):

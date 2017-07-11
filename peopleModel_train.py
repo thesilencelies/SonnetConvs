@@ -11,16 +11,20 @@ def main(_):
   parser = argparse.ArgumentParser()
   parser.add_argument("train_data")
   parser.add_argument("save_dir")
-  parser.add_argument("--batch_size", type=int, default=50)
+  parser.add_argument("--batch_size", type=int, default=100)
   parser.add_argument("--n_read_threads", type=int, default = 3)
   parser.add_argument("--num_epochs", type=int, default=None)
+  parser.add_argument("--image_width", type=int, default=150)
+  parser.add_argument("--image_height", type=int, default=200)
   args = parser.parse_args()
 
   global_step = tf.contrib.framework.get_or_create_global_step()
 
-  img1, img2, label = pm.distorted_inputs(args.train_data, args.batch_size, args.n_read_threads, args.num_epochs)
+  inc_global = tf.assign_add(global_step, 1, name="incriment")
+
+  img1, img2, label = pm.distorted_inputs(args.train_data, args.batch_size, args.n_read_threads, args.num_epochs, image_width=args.image_width, image_height=args.image_height )
  
-  logits = pm.model(img1,img2)
+  logits = pm.model(img1,img2, image_width=args.image_width, image_height=args.image_height)
   
   loss = pm.loss(logits, label)
 
@@ -28,7 +32,7 @@ def main(_):
 
   correct_prediction = tf.equal(tf.argmax(label, 1), tf.argmax(logits, 1))
   accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-
+  
   #variable_summaries(y_res)
   saver = tf.train.Saver()
 
@@ -42,7 +46,7 @@ def main(_):
     # Start input enqueue threads.
     coord = tf.train.Coordinator()
     threads = tf.train.start_queue_runners(sess=sess, coord=coord)
-
+    sess.graph.finalize()
     try:
         while not coord.should_stop():
             # Run training steps
@@ -53,7 +57,7 @@ def main(_):
             if (tf.train.global_step(sess, global_step) % 100) == 99:
               train_accuracy = accuracy.eval()
               print('step %d, train accuracy %g' % (tf.train.global_step(sess, global_step), train_accuracy))
-            global_step += 1
+            sess.run(inc_global)
     except tf.errors.OutOfRangeError:
         print('Done testing -- epoch limit reached')
     finally:

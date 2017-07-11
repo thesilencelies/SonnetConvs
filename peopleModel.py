@@ -25,12 +25,7 @@ NUM_EPOCHS_PER_DECAY = 350.0      # Epochs after which learning rate decays.
 LEARNING_RATE_DECAY_FACTOR = 0.1  # Learning rate decay factor.
 INITIAL_LEARNING_RATE = 0.1       # Initial learning rate.
 
-IMAGE_HEIGHT = 290
-IMAGE_WIDTH = 200
-
 #scales and reshapes
-def reshapeMod1(inp):
-   return tf.reshape(tf.scalar_mul(1./0xffff,inp),[-1,IMAGE_HEIGHT,IMAGE_WIDTH,1])
 
 def variable_summaries(var):
   """Attach a lot of summaries to a Tensor (for TensorBoard visualization)."""
@@ -44,28 +39,28 @@ def variable_summaries(var):
     tf.summary.scalar('min', tf.reduce_min(var))
     tf.summary.histogram('histogram', var)
 
-def inputs(filename, batch_size, n_read_threads = 3, num_epochs = None):
+def inputs(filename, batch_size, n_read_threads = 3, num_epochs = None, image_width = 200, image_height=290):
   """
   reads the paired images for comparison
   input: name of the file to load from, parameters of the loading process
   output: the two images and the label (a logit classifier for 2 class - yes or no)
   """
   with tf.device('/cpu:0'): #we need to load using the CPU or it allocated a stupid amount of memory
-    x1, x2, y_ = pc.input_pipeline([filename], batch_size, n_read_threads, num_epochs=num_epochs)
+    x1, x2, y_ = pc.input_pipeline([filename], batch_size, n_read_threads, num_epochs=num_epochs, imgwidth = image_width, imgheight = image_height)
   return x1, x2, y_ 
 
-def distorted_inputs(filename, batch_size, n_read_threads = 3, num_epochs = None):
+def distorted_inputs(filename, batch_size, n_read_threads = 3, num_epochs = None,image_width = 200, image_height=290):
   """
   reads the paired images for comparison
   input: name of the file to load from, parameters of the loading process
   output: the two images and the label (a logit classifier for 2 class - yes or no)
   """
   with tf.device('/cpu:0'): #we need to load using the CPU or it allocated a stupid amount of memory
-    x1, x2, y_ = pc.distorted_input_pipeline([filename], batch_size, n_read_threads, num_epochs=num_epochs, imgwidth = IMAGE_WIDTH, imgheight = IMAGE_HEIGHT)
+    x1, x2, y_ = pc.distorted_input_pipeline([filename], batch_size, n_read_threads, num_epochs=num_epochs, imgwidth = image_width, imgheight = image_height)
   return x1, x2, y_ 
 
 
-def model(image1, image2):
+def model(image1, image2, image_width=200, image_height=290):
 
   kernel_shape = 3
   batch_norm = snt.BatchNorm()
@@ -74,19 +69,26 @@ def model(image1, image2):
                       stride=1,name="conv1")
   conv2 = snt.Conv2D(output_channels=5,kernel_shape=kernel_shape,
                       stride=1,name="conv2")
-  conv3 = snt.Conv2D(output_channels=5,kernel_shape=kernel_shape,
+  conv3 = snt.Conv2D(output_channels=3,kernel_shape=kernel_shape,
                       stride=1,name="conv3")
-  conv5 = snt.Conv2D(output_channels=3,kernel_shape=5,
-                      stride=1,name="summaryFeatures")
+  conv4 = snt.Conv2D(output_channels=3,kernel_shape=kernel_shape,
+                      stride=1,name="conv3")
+  #from the CIND paper
+  conv5 = snt.Conv2D(output_channels=10,kernel_shape=5,
+                      stride=5,name="summaryFeatures")
+  
+  conv1 = snt.Conv2D(output_channels=1, kernel_shape=1,stride=1,name="1dconv")
   maxpool = lambda x : tf.nn.max_pool(x, ksize=[1, 2, 2, 1],
                       strides=[1, 2, 2, 1], padding='SAME')
-  perinput_net = ms.MultiScaleModule([conv,tf.nn.relu, conv2,maxpool,conv3,maxpool], 3, name="per_input")
+  reshapeMod = lambda x : tf.reshape(tf.scalar_mul(1./0xffff,x),[-1,image_height,image_width,1])
+
+  perinput_net = snt.Sequential([conv,tf.nn.relu, conv2, maxpool,tf.nn.relu, conv3, tf.nn.relu, maxpool, conv4], name="per_input")
   #cross input then two  linear layers
   linh = snt.Linear(1000, name="hidden")
   lino = snt.Linear(2, name="linear")
-  both_net = snt.Sequential([CIND.CrossInputNeighborhoodDifferences(),conv5,tf.nn.relu,maxpool, tf.contrib.layers.flatten, linh, tf.nn.relu, lino], name="combined") 
+  both_net = snt.Sequential([CIND.CrossInputNeighborhoodDifferences(),conv5,tf.nn.relu,conv1, maxpool, tf.contrib.layers.flatten, linh, tf.nn.relu, lino], name="combined") 
 
-  y_res = both_net( (perinput_net(batch_norm(reshapeMod1(image1))), perinput_net(batch_norm(reshapeMod1(image2)))) )
+  y_res = both_net( (perinput_net(reshapeMod(image1)), perinput_net(reshapeMod(image2))) )
   return y_res
 
 
@@ -148,25 +150,15 @@ def train(total_loss, global_step, batch_size, nex_per_epoch):
     train_op: op for training.
   """
  # Variables that affect learning rate.
-  num_batches_per_epoch = nex_per_epoch / batch_size
-  decay_steps = int(num_batches_per_epoch * NUM_EPOCHS_PER_DECAY)
-
-  # Decay the learning rate exponentially based on the number of steps.
-  lr = tf.train.exponential_decay(INITIAL_LEARNING_RATE,
-                                  global_step,
-                                  decay_steps,
-                                  LEARNING_RATE_DECAY_FACTOR,
-                                  staircase=True)
-  tf.summary.scalar('learning_rate', lr)
+  #num_batches_per_epoch = nex_per_epoch / batch_size
+  #decay_steps = int(num_batches_per_epoch * NUM_EPOCHS_PER_DECAY)
 
   # Generate moving averages of all losses and associated summaries.
   #loss_averages_op = _add_loss_summaries(total_loss)
 
   # Compute gradients.
   # with tf.control_dependencies([loss_averages_op]):
-  opt = tf.train.RMSPropOptimizer(lr, 0.9,
-                                  momentum=0.9,
-                                  epsilon=1.0)
+  opt = tf.train.AdamOptimizer(1e-4)
 
   # Apply gradients.
   apply_gradient_op = opt.minimize(total_loss)
@@ -203,30 +195,7 @@ def main(_):
   with tf.device('/cpu:0'): #we need to load using the CPU or it allocated a stupid amount of memory
     x1, x2, y_ = pc.input_pipeline(filenames, args.batch_size, args.n_read_threads, num_epochs=args.num_epochs)
 
-  keep_prob = tf.placeholder(tf.float32)
-
-  kernel_shape = 3
-  batch_norm = snt.BatchNorm()
-  #per-input convolutions then max pooling
-  conv = snt.Conv2D(output_channels=5,kernel_shape=kernel_shape,
-                      stride=1,name="conv1")
-  conv2 = snt.Conv2D(output_channels=5,kernel_shape=kernel_shape,
-                      stride=1,name="conv2")
-  conv3 = snt.Conv2D(output_channels=5,kernel_shape=kernel_shape,
-                      stride=1,name="conv3")
-  conv5 = snt.Conv2D(output_channels=3,kernel_shape=5,
-                      stride=1,name="summaryFeatures")
-  conv1 = snt.Conv2D(output_channels=1, kernel_shape=1,stride=1,name="1dconv")
-  maxpool = lambda x : tf.nn.max_pool(x, ksize=[1, 2, 2, 1],
-                      strides=[1, 2, 2, 1], padding='SAME')
-  perinput_net = snt.Sequential([ms.MultiScaleModule([conv,tf.nn.relu, conv2,maxpool], 3, name="per_input"),tf.nn.relu,conv1])
-  #cross input then two  linear layers
-  linh = snt.Linear(1000, name="hidden")
-  lino = snt.Linear(2, name="linear")
-  both_net = snt.Sequential([CIND.CrossInputNeighborhoodDifferences(),conv5,tf.nn.relu, tf.contrib.layers.flatten, linh, tf.nn.relu, lino], name="combined") 
-
-
-  y_res = both_net( (perinput_net(batch_norm(reshapeMod1(x1))), perinput_net(batch_norm(reshapeMod1(x2)))) )
+  y_res = model(x1,x2)
 
   cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y_res))
   train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
