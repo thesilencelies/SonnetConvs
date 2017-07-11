@@ -14,8 +14,8 @@ def main(_):
   parser.add_argument("--batch_size", type=int, default=100)
   parser.add_argument("--n_read_threads", type=int, default = 3)
   parser.add_argument("--num_epochs", type=int, default=None)
-  parser.add_argument("--image_width", type=int, default=150)
-  parser.add_argument("--image_height", type=int, default=200)
+  parser.add_argument("--image_width", type=int, default=200)
+  parser.add_argument("--image_height", type=int, default=290)
   args = parser.parse_args()
 
   global_step = tf.contrib.framework.get_or_create_global_step()
@@ -24,7 +24,7 @@ def main(_):
 
   img1, img2, label = pm.distorted_inputs(args.train_data, args.batch_size, args.n_read_threads, args.num_epochs, image_width=args.image_width, image_height=args.image_height )
  
-  logits = pm.model(img1,img2, image_width=args.image_width, image_height=args.image_height)
+  logits = pm.model(img1,img2, image_width=args.image_width, image_height=args.image_height, scaling_term=1.0/0xff)
   
   loss = pm.loss(logits, label)
 

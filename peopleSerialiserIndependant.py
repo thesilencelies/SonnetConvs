@@ -22,16 +22,19 @@ def scaleAndPadToSize(img, width, height):
   return res
 
 
-def makeAndSavePair(size, positive_ratio, usedLabels, usedRatio, height, width):
+def makeAndSavePair(size, positive_ratio, usedLabels, start_ind, end_ind, compare_all, height, width):
    # load the full set of images to a memory mapped file (this prevents us running out of memory here)
    imgarr = np.load("numpyarr.npy", mmap_mode='r')
    npos = positive_ratio * size
    nneg = size - npos
-   perm = np.arange(int(len(usedLabels)*usedRatio))
+   if compare_all:
+     perm = np.arange(int(end_ind))
+   else:
+     perm = np.arange(int(start_ind), int(end_ind))
    np.random.shuffle(perm)
    it = 0
    for _i in range(0,size):
-      i = _i % len(perm)        
+      isel = (_i % (end_ind - start_ind)) + start_ind
       # decide if it's positive or not
       positive = (npos/(npos + nneg)) < random.random()
       if positive :
@@ -41,7 +44,7 @@ def makeAndSavePair(size, positive_ratio, usedLabels, usedRatio, height, width):
       # iterate through the random set until you hit an example of the correct type
       while True :
          it = (it + 1) % len(perm)
-         if (usedLabels[it] == usedLabels[i]) == positive :
+         if (usedLabels[perm[it]] == usedLabels[isel]) == positive :
             break
       if positive :
          label = [1,0]
@@ -59,9 +62,9 @@ def makeAndSavePair(size, positive_ratio, usedLabels, usedRatio, height, width):
                 'label': tf.train.Feature(
                     int64_list=tf.train.Int64List(value=label)),
                 'image_1': tf.train.Feature(
-                    float_list=tf.train.FloatList(value=np.nditer(imgarr[i].astype("float")))),
+                    float_list=tf.train.FloatList(value=np.nditer(imgarr[isel].astype("float")))),
                 'image_2': tf.train.Feature(
-                    float_list=tf.train.FloatList(value=np.nditer(imgarr[it].astype("float")))),
+                    float_list=tf.train.FloatList(value=np.nditer(imgarr[perm[it]].astype("float")))),
                 'rows': tf.train.Feature(
                        int64_list=tf.train.Int64List(value=[height])),
                 'cols': tf.train.Feature(
@@ -135,10 +138,10 @@ if __name__ == "__main__":
   #now form pairs and save those to a different file
   with tf.python_io.TFRecordWriter(args.paired_output_train) as writer:
 
-    makeAndSavePair(args.ntrain_pairs, args.positive_ratio, usedLabels, args.train_ratio, int(args.image_width), int(args.image_height))
+    makeAndSavePair(args.ntrain_pairs, args.positive_ratio, usedLabels,0, int(args.train_ratio*len(usedLabels)), False,  int(args.image_width), int(args.image_height))
     writer.close()
      
 
   with tf.python_io.TFRecordWriter(args.paired_output_test) as writer:
-    makeAndSavePair(args.ntest_pairs, args.positive_ratio, usedLabels, 1, int(args.image_width), int(args.image_height))
+    makeAndSavePair(args.ntest_pairs, args.positive_ratio, usedLabels, int(args.train_ratio*len(usedLabels)), len(usedLabels), True, int(args.image_width), int(args.image_height))
     writer.close()

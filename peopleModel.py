@@ -60,7 +60,7 @@ def distorted_inputs(filename, batch_size, n_read_threads = 3, num_epochs = None
   return x1, x2, y_ 
 
 
-def model(image1, image2, image_width=200, image_height=290):
+def model(image1, image2, image_width=200, image_height=290, scaling_term=1.0/0xffff):
 
   kernel_shape = 3
   batch_norm = snt.BatchNorm()
@@ -80,7 +80,7 @@ def model(image1, image2, image_width=200, image_height=290):
   conv1 = snt.Conv2D(output_channels=1, kernel_shape=1,stride=1,name="1dconv")
   maxpool = lambda x : tf.nn.max_pool(x, ksize=[1, 2, 2, 1],
                       strides=[1, 2, 2, 1], padding='SAME')
-  reshapeMod = lambda x : tf.reshape(tf.scalar_mul(1./0xffff,x),[-1,image_height,image_width,1])
+  reshapeMod = lambda x : tf.reshape(tf.scalar_mul(scaling_term,x),[-1,image_height,image_width,1])
 
   perinput_net = snt.Sequential([conv,tf.nn.relu, conv2, maxpool,tf.nn.relu, conv3, tf.nn.relu, maxpool, conv4], name="per_input")
   #cross input then two  linear layers
