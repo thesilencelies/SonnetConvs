@@ -22,7 +22,7 @@ def scaleAndPadToSize(img, width, height):
   return res
 
 
-def makeAndSavePair(size, positive_ratio, usedLabels, start_ind, end_ind, compare_all, height, width):
+def makeAndSavePair(writer, size, positive_ratio, usedLabels, start_ind, end_ind, compare_all, height, width):
    # load the full set of images to a memory mapped file (this prevents us running out of memory here)
    imgarr = np.load("numpyarr.npy", mmap_mode='r')
    npos = positive_ratio * size
@@ -138,10 +138,10 @@ if __name__ == "__main__":
   #now form pairs and save those to a different file
   with tf.python_io.TFRecordWriter(args.paired_output_train) as writer:
 
-    makeAndSavePair(args.ntrain_pairs, args.positive_ratio, usedLabels,0, int(args.train_ratio*len(usedLabels)), False,  int(args.image_width), int(args.image_height))
+    makeAndSavePair(writer, args.ntrain_pairs, args.positive_ratio, usedLabels,0, int(args.train_ratio*len(usedLabels)), False,  int(args.image_width), int(args.image_height))
     writer.close()
      
 
   with tf.python_io.TFRecordWriter(args.paired_output_test) as writer:
-    makeAndSavePair(args.ntest_pairs, args.positive_ratio, usedLabels, int(args.train_ratio*len(usedLabels)), len(usedLabels), True, int(args.image_width), int(args.image_height))
+    makeAndSavePair(writer, args.ntest_pairs, args.positive_ratio, usedLabels, int(args.train_ratio*len(usedLabels)), len(usedLabels), True, int(args.image_width), int(args.image_height))
     writer.close()

@@ -10,18 +10,7 @@ import csv
 import random
 import tensorflow as tf
 
-from peopleSerialiserIndependant import makeAndSavePair
-
-def scaleAndPadToSize(img, width, height):
-  #scale such that the height is correct
-  res = cv2.resize(img, (img.shape[1]*height/img.shape[0],height))
-  padwidth = width - res.shape[1]
-  halfpad = int(padwidth/2)
-  if padwidth < 0 :    
-    res = res[:, -padwidth + halfpad : halfpad]    
-  else:
-    res = np.pad(res, [[0, 0],[halfpad,padwidth - halfpad]],'edge')
-  return res
+from peopleSerialiserIndependant import *
 
 
 if __name__ == "__main__":
@@ -90,10 +79,10 @@ if __name__ == "__main__":
   #now form pairs and save those to a different file
   with tf.python_io.TFRecordWriter(args.paired_output_train) as writer:
 
-    makeAndSavePair(args.ntrain_pairs, args.positive_ratio, usedLabels,0, int(args.train_ratio*len(usedLabels)), False,  int(args.image_width), int(args.image_height))
+    makeAndSavePair(writer, args.ntrain_pairs, args.positive_ratio, usedLabels,0, int(args.train_ratio*len(usedLabels)), False,  int(args.image_width), int(args.image_height))
     writer.close()
      
 
   with tf.python_io.TFRecordWriter(args.paired_output_test) as writer:
-    makeAndSavePair(args.ntest_pairs, args.positive_ratio, usedLabels, int(args.train_ratio*len(usedLabels)), len(usedLabels), True, int(args.image_width), int(args.image_height))
+    makeAndSavePair(writer, args.ntest_pairs, args.positive_ratio, usedLabels, int(args.train_ratio*len(usedLabels)), len(usedLabels), True, int(args.image_width), int(args.image_height))
     writer.close()
